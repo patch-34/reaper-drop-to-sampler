@@ -333,6 +333,13 @@ struct HookedClass
 };
 
 static std::vector<HookedClass> g_hooked;
+static std::string g_hookStatus; // printed to the console whenever Debug gets enabled
+
+static void AddHookStatus(const char* line)
+{
+    g_hookStatus += line;
+    Core_DebugLog(line);
+}
 
 static const HookedClass* HookFor(id self)
 {
@@ -489,19 +496,22 @@ static Class SwellDropClassFor(NSView* view)
 
 static void HookClass(Class cls, const char* what)
 {
-    if (!cls) return;
+    if (!cls)
+    {
+        char buf[200];
+        snprintf(buf, sizeof(buf), "[Drop To Sampler] %s view: no SWELL drop class found - not hooked\n", what);
+        AddHookStatus(buf);
+        return;
+    }
     for (const HookedClass& h : g_hooked)
     {
         if (h.cls == cls) return;
         if ([cls isSubclassOfClass:h.cls] || [h.cls isSubclassOfClass:cls])
         {
-            if (Core_IsDebug())
-            {
-                char buf[300];
-                snprintf(buf, sizeof(buf), "[Drop To Sampler] %s view class %s is related to hooked %s - not hooking twice\n",
-                    what, class_getName(cls), class_getName(h.cls));
-                Core_DebugLog(buf);
-            }
+            char buf[300];
+            snprintf(buf, sizeof(buf), "[Drop To Sampler] %s view class %s is related to hooked %s - not hooking twice\n",
+                what, class_getName(cls), class_getName(h.cls));
+            AddHookStatus(buf);
             return;
         }
     }
@@ -514,14 +524,11 @@ static void HookClass(Class cls, const char* what)
     h.origPerform = HookOne(cls, @selector(performDragOperation:), (IMP)Hook_performDragOperation);
     g_hooked.push_back(h);
 
-    if (Core_IsDebug())
-    {
-        char buf[300];
-        snprintf(buf, sizeof(buf), "[Drop To Sampler] drag hooks on %s (from %s view): entered=%d updated=%d exited=%d perform=%d\n",
-            class_getName(cls), what, h.origEntered != nullptr, h.origUpdated != nullptr,
-            h.origExited != nullptr, h.origPerform != nullptr);
-        Core_DebugLog(buf);
-    }
+    char buf[300];
+    snprintf(buf, sizeof(buf), "[Drop To Sampler] drag hooks on %s (from %s view): entered=%d updated=%d exited=%d perform=%d\n",
+        class_getName(cls), what, h.origEntered != nullptr, h.origUpdated != nullptr,
+        h.origExited != nullptr, h.origPerform != nullptr);
+    AddHookStatus(buf);
 }
 
 static void UnhookAll()
@@ -558,12 +565,9 @@ static void EnsureViewAcceptsFiles(NSView* v, const char* what)
     if ([[v registeredDraggedTypes] count]) return;
     // REAPER did not register this view for drags: register it so Cocoa delivers file drags here
     [v registerForDraggedTypes:@[ NSPasteboardTypeFileURL, NSFilenamesPboardType ]];
-    if (Core_IsDebug())
-    {
-        char buf[200];
-        snprintf(buf, sizeof(buf), "[Drop To Sampler] registered %s view for file drags\n", what);
-        Core_DebugLog(buf);
-    }
+    char buf[200];
+    snprintf(buf, sizeof(buf), "[Drop To Sampler] registered %s view for file drags\n", what);
+    AddHookStatus(buf);
 }
 
 static void HookView(HWND hwnd, const char* what)
@@ -623,16 +627,22 @@ void Platform_Poll()
         if (s_mcp) HookView(s_mcp, "MCP");
     }
 
+    // Print the hook status once each time Debug is switched on, and when windows change
+    static bool s_wasDebug = false;
     static int s_reported = -1;
     const int state = (s_tcp ? 1 : 0) | (s_mcp ? 2 : 0);
-    if (Core_IsDebug() && state != s_reported)
+    const bool dbg = Core_IsDebug();
+    if (dbg && (!s_wasDebug || state != s_reported))
     {
+        if (!s_wasDebug)
+            Core_DebugLog(g_hookStatus.c_str());
         s_reported = state;
         char buf[256];
         snprintf(buf, sizeof(buf), "[Drop To Sampler] macOS: TCP view %s, MCP view %s\n",
             s_tcp ? "found" : "not found (hit-test only)", s_mcp ? "found" : "not found (hit-test only)");
         Core_DebugLog(buf);
     }
+    s_wasDebug = dbg;
 }
 
 void Platform_Shutdown()
