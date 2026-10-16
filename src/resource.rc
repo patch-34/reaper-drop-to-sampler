@@ -1,4 +1,7 @@
+#include <windows.h>
 #include "resource.h"
 
 IDR_PNG_INSERT  RCDATA "res/sampler_insert.png"
 IDR_PNG_REPLACE RCDATA "res/sampler_replace.png"
+
+#include "prefs_dialog.rc"

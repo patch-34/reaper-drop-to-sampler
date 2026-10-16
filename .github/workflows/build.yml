@@ -1,0 +1,75 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release -j 4
+
+      - name: Check binary
+        run: |
+          set -e
+          f=build/reaper_drop_to_sampler.dylib
+          file "$f"
+          lipo -info "$f"
+          lipo "$f" -verify_arch arm64 x86_64
+          nm -gU "$f" | grep ReaperPluginEntry
+          otool -L "$f"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reaper_drop_to_sampler-macos-universal
+          path: build/reaper_drop_to_sampler.dylib
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: false
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Check binary
+        run: |
+          set -e
+          f=build/reaper_drop_to_sampler.dll
+          objdump -p "$f" | grep "DLL Name"
+          if objdump -p "$f" | grep -iE "libwinpthread|libgcc|libstdc\+\+"; then
+            echo "MinGW runtime is linked dynamically"; exit 1
+          fi
+          objdump -p "$f" | grep ReaperPluginEntry
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reaper_drop_to_sampler-windows-x64
+          path: build/reaper_drop_to_sampler.dll

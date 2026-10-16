@@ -1,0 +1,25 @@
+// Preferences page dialog.
+// Windows: #included from resource.rc.
+// macOS:   converted to prefs_dialog.rc_mac_dlg by vendor/WDL/WDL/swell/swell_resgen.pl
+//          (run tools/gen_mac_resources.sh after editing this file).
+
+#include "resource.h"
+
+IDD_PREFS DIALOGEX 0, 0, 260, 236
+STYLE DS_SETFONT | DS_FIXEDSYS | DS_CONTROL | WS_CHILD | WS_VISIBLE
+FONT 8, "MS Shell Dlg", 0, 0, 0x1
+BEGIN
+    LTEXT           "Sampler:",IDC_LABEL_SAMPLER,7,7,240,9
+    COMBOBOX        IDC_SAMPLER_COMBO,7,17,240,80,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Rec-arm for new tracks:",IDC_LABEL_RECARM,7,37,240,9
+    COMBOBOX        IDC_RECARM_COMBO,7,47,240,80,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Show sampler:",IDC_LABEL_SHOW,7,67,240,9
+    COMBOBOX        IDC_SHOW_COMBO,7,77,240,80,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "If sampler exists:",IDC_LABEL_EXISTING,7,97,240,9
+    COMBOBOX        IDC_EXISTING_COMBO,7,107,240,80,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Multiple media:",IDC_LABEL_MULTI,7,127,240,9
+    COMBOBOX        IDC_MULTI_COMBO,7,137,240,80,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Multiple samplers on one track:",IDC_LABEL_MULTISAMP,7,157,240,9
+    COMBOBOX        IDC_MULTISAMP_COMBO,7,167,240,80,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    CONTROL         "Debug (log drops to the REAPER console)",IDC_DEBUG_CHECK,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,191,240,10
+END
