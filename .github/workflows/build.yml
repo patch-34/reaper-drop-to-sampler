@@ -2,6 +2,7 @@ name: build
 
 on:
   push:
+    branches-ignore: [builds]
   pull_request:
   workflow_dispatch:
 
@@ -17,17 +18,25 @@ jobs:
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build build --config Release -j 4
+        run: |
+          set -o pipefail
+          cmake --build build --config Release -j 4 2>&1 | tee build.log
+
+      - name: Report warnings
+        if: always()
+        run: |
+          # Compiler warnings from our own sources as annotations (readable via the API)
+          grep -E "(src/).*(warning|error):" build.log | sort -u | head -50 | while IFS= read -r line; do
+            echo "::warning title=compiler (macOS)::$line"
+          done || true
 
       - name: Check binary
         run: |
           set -e
           f=build/reaper_drop_to_sampler.dylib
-          file "$f"
-          lipo -info "$f"
           lipo "$f" -verify_arch arm64 x86_64
-          nm -gU "$f" | grep ReaperPluginEntry
-          otool -L "$f"
+          nm -gU "$f" | grep -q _ReaperPluginEntry
+          echo "::notice title=macOS binary::$(lipo -info "$f" | sed 's/.*: //') | $(stat -f%z "$f") bytes | min macOS $(otool -l "$f" | awk '/minos|version/{print $2; exit}') | links: $(otool -L "$f" | tail -n +2 | awk '{print $1}' | xargs -n1 basename | tr '\n' ' ')"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -57,19 +66,64 @@ jobs:
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build build
+        run: |
+          set -o pipefail
+          cmake --build build 2>&1 | tee build.log
+
+      - name: Report warnings
+        if: always()
+        run: |
+          grep -E "(src/).*(warning|error):" build.log | sort -u | head -50 | while IFS= read -r line; do
+            echo "::warning title=compiler (Windows)::$line"
+          done || true
 
       - name: Check binary
         run: |
           set -e
           f=build/reaper_drop_to_sampler.dll
-          objdump -p "$f" | grep "DLL Name"
           if objdump -p "$f" | grep -iE "libwinpthread|libgcc|libstdc\+\+"; then
-            echo "MinGW runtime is linked dynamically"; exit 1
+            echo "::error::MinGW runtime is linked dynamically"; exit 1
           fi
-          objdump -p "$f" | grep ReaperPluginEntry
+          objdump -p "$f" | grep -q ReaperPluginEntry
+          echo "::notice title=Windows binary::$(stat -c%s "$f") bytes | imports: $(objdump -p "$f" | awk '/DLL Name/{print $3}' | grep -v '^api-ms' | tr '\n' ' ')"
 
       - uses: actions/upload-artifact@v4
         with:
           name: reaper_drop_to_sampler-windows-x64
           path: build/reaper_drop_to_sampler.dll
+
+  # Latest main build -> 'builds' branch (one commit, force-pushed), so binaries can be
+  # fetched with plain git or from the GitHub web UI without unpacking artifacts.
+  publish:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [macos, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Push to builds branch
+        run: |
+          set -e
+          cd dist
+          ls -la
+          cat > README.md <<EOF
+          # Drop To Sampler — latest builds
+
+          From commit ${GITHUB_SHA} on main.
+
+          | File | Platform | Install to |
+          |---|---|---|
+          | reaper_drop_to_sampler.dylib | macOS (Apple Silicon + Intel) | ~/Library/Application Support/REAPER/UserPlugins/ |
+          | reaper_drop_to_sampler.dll | Windows x64 | %APPDATA%\\REAPER\\UserPlugins\\ |
+          EOF
+          git init -q -b builds
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Builds from ${GITHUB_SHA}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" builds
